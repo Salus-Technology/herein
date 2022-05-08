@@ -47,6 +47,7 @@ class herein:
             tcp = TCP(sport=RandShort(), dport=d_port, flags="S")
             packet = ip / tcp / self.message
             send(packet, loop=0, verbose=1)
+            print("Sent packet to: " + self.dest_addr)
 
         except Exception as e:
             print("Failure sending tcp packet: " + str(e))
@@ -60,66 +61,71 @@ class herein:
             confFile.close()
         except Exception as e:
             print("Error updating OTP counter > " + str(e))
-    def return_clients(self):
-        client_names = list()
-        client_hashes = list()
-        self.config.read("conf/hosts.ini")
-        for entry in self.config:
-            if(entry != "DEFAULT"):
-                client_names.append(entry)
-                client_hashes.append(self.config[entry]['name'])
-        return (client_names, client_hashes)
-    def list_clients(self):
-        client_names, client_hashes = self.return_clients()
-        for name in client_names:
-            print("Client: " + name)
-    def preamble(self):
-        return  nullcontext
-
-    def register_client(self):
-        client_names, client_hashes = self.return_clients()
-        menu_opt = 0
-        new_keys = list()
-        keys = list()
-        try:
-            files = os.listdir("keys/")
-            for key in files:
-                if(key.endswith(".pem")):
-                    keys.append(key)
-            for key in keys:
-                if not key in client_hashes:
-                    new_keys.append(key)
-            for key in new_keys:
-                print(str(menu_opt) + ") " + key)
-                menu_opt = menu_opt + 1
-            menu_choice = input("Which key would you like to register (enter q to exit): ")
-            if(menu_choice != "q"):
-                new_host_name = input("Enter desired hostname for this client: ")
-                new_ip_addr = input("Enter IP Address of client: ")
-                self.write_to_config(new_host_name, new_keys[int(menu_choice)], new_ip_addr)
-        except Exception as e:
-            print("Error: " + str(e))
-
-    def write_to_config(self, hostname, keyfile, ip_address):
-        try:
-            print(keyfile)
-            confFile = open("conf/hosts.ini", "a")
-            confFile.write("[" + hostname + "]\n")
-            confFile.write("name = " + os.path.splitext(keyfile)[0] + "\n")
-            confFile.write("keyfile = " + keyfile + "\n")
-            confFile.write("ip_addr = " + ip_address + "\n")
-            confFile.write("count = 0 \n")
-        except Exception as e:
-            print("Error: " + str(e))
-        
-    def send_packet(self, host):
+    # def return_clients(self):
+    #     client_names = list()
+    #     client_hashes = list()
+    #     self.config.read("conf/hosts.ini")
+    #     for entry in self.config:
+    #         if(entry != "DEFAULT"):
+    #             client_names.append(entry)
+    #             client_hashes.append(self.config[entry]['name'])
+    #     return (client_names, client_hashes)
+    # def list_clients(self):
+    #     client_names, client_hashes = self.return_clients()
+    #     for name in client_names:
+    #         print("Client: " + name)
+    def preamble(self, host):
         self.dest_host = host
+        self.message = '%s,%s,%s' % (self.client, self.count, self.keyfile)
+        self.make_tcp(5002)
+
+    # def register_client(self):
+    #     client_names, client_hashes = self.return_clients()
+    #     menu_opt = 0
+    #     new_keys = list()
+    #     keys = list()
+    #     try:
+    #         files = os.listdir("keys/")
+    #         for key in files:
+    #             if(key.endswith(".pem")):
+    #                 keys.append(key)
+    #         for key in keys:
+    #             if not key in client_hashes:
+    #                 new_keys.append(key)
+    #         for key in new_keys:
+    #             print(str(menu_opt) + ") " + key)
+    #             menu_opt = menu_opt + 1
+    #         menu_choice = input("Which key would you like to register (enter q to exit): ")
+    #         if(menu_choice != "q"):
+    #             new_host_name = input("Enter desired hostname for this client: ")
+    #             new_ip_addr = input("Enter IP Address of client: ")
+    #             self.write_to_config(new_host_name, new_keys[int(menu_choice)], new_ip_addr)
+    #     except Exception as e:
+    #         print("Error: " + str(e))
+
+    # def write_to_config(self, hostname, keyfile, ip_address):
+    #     try:
+    #         print(keyfile)
+    #         confFile = open("conf/hosts.ini", "a")
+    #         confFile.write("[" + hostname + "]\n")
+    #         confFile.write("name = " + os.path.splitext(keyfile)[0] + "\n")
+    #         confFile.write("keyfile = " + keyfile + "\n")
+    #         confFile.write("ip_addr = " + ip_address + "\n")
+    #         confFile.write("count = 0 \n")
+    #     except Exception as e:
+    #         print("Error: " + str(e))
+        
+    def send_packet(self):
         self.config_to_val()
         client.generate_rac()
         client.generate_racs()
         client.update_count()
+        sequenceCount = 1
         for port in self.dest_port:
+            self.message = '%s, %s, %s' % (self.client, sequenceCount, port)
+            print(self.message)
             self.make_tcp(port)
+            sequenceCount = sequenceCount + 1
     
     def generate_rac(self):
         self.rac = self.rac_handler.generate_rac(int(self.count))
@@ -133,6 +139,8 @@ class herein:
 if __name__ == "__main__":
     client = herein()
     try:
-        client.send_packet(sys.argv[1])
+        client.preamble(sys.argv[1])
+
+        client.send_packet()
     except Exception as e:
         print(e)
