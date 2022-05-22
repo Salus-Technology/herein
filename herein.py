@@ -4,7 +4,7 @@ __author__ = "H. Kyle Wiseman"
 __copyright__ = "Copyright 2021, Salus Technology"
 __credits__ = ["H. Kyle Wiseman", "Jason M. Pittman"]
 __license__ = "GPLv3"
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __maintainer__ = "H. Kyle Wiseman"
 __email__ = "hkylewiseman@gmail.com"
 __status__ = "Development"
@@ -12,7 +12,7 @@ __status__ = "Development"
 from contextlib import nullcontext
 import sys
 import socket
-import os
+from time import sleep
 from scapy.all import *
 import getpass
 import configparser
@@ -25,32 +25,48 @@ class herein:
         self.dest_addr = "127.0.0.1"
         self.dest_port = []
         self.count = -1
-        self.message = "" # Raw(b"X"*1024)
+        self.message = Raw(b"preamble ack"*1024) # Raw(b"X"*1024)
         self.crypto = AsymmetricCryptographyHandler()
         self.client = "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08"
-        self.protocol = "tcp"
         self.rac = ''
         self.rac_handler = RemoteAccessCodeHandler(None, None)
         self.racs_handler = RemoteAccessCodeSequenceHandler()
         self.config = configparser.ConfigParser()
         self.dest_host = ''
-        self.keyfile = "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08_public.pem"
+        self.keyfile = ""
+         
     def config_to_val(self):
         self.config.read("conf/hosts.ini")
         self.dest_addr = self.config[self.dest_host]['ip_addr']
         self.count = self.config[self.dest_host]['count']
         self.keyfile = self.config[self.dest_host]['keyfile']
 
-    def make_tcp(self, d_port):
+    def make_tcp(self, d_port, preamble_bool=False):
+        response = ''
         try:
-            ip = IP(dst=self.dest_addr)
-            tcp = TCP(sport=RandShort(), dport=d_port, flags="S")
-            packet = ip / tcp / self.message
-            send(packet, loop=0, verbose=1)
+            # ip = IP(dst=self.dest_addr)
+            # source_port = RandShort()
+            # tcp = TCP(sport=source_port, dport=d_port, flags="S")
+            # packet = ip / tcp / self.message
+            if(preamble_bool):
+                clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                clientSocket.connect((self.dest_addr, d_port))
+                message = 'preamble ack'
+                clientSocket.send(message.encode("utf-8"))
+                response = clientSocket.recv(1024)
+                clientSocket.close()
+                #sr1(packet, timeout=1000)
+            else:
+                ip = IP(dst=self.dest_addr)
+                source_port = RandShort()
+                tcp = TCP(sport=source_port, dport=d_port, flags="S")
+                packet = ip / tcp / self.message
+                send(packet, loop=0, verbose=1)
             print("Sent packet to: " + self.dest_addr)
 
         except Exception as e:
             print("Failure sending tcp packet: " + str(e))
+        return response
 
     def update_count(self):
         try:
@@ -76,8 +92,10 @@ class herein:
     #         print("Client: " + name)
     def preamble(self, host):
         self.dest_host = host
-        self.message = '%s,%s,%s' % (self.client, self.count, self.keyfile)
-        self.make_tcp(5002)
+        self.message = 'preamble ack'
+        #'%s,%s,%s' % (self.client, self.count, self.keyfile)
+        response = self.make_tcp(50000, True)
+        return str(response).replace("b'", "")
 
     # def register_client(self):
     #     client_names, client_hashes = self.return_clients()
@@ -139,8 +157,12 @@ class herein:
 if __name__ == "__main__":
     client = herein()
     try:
-        client.preamble(sys.argv[1])
-
-        client.send_packet()
+        response = client.preamble(sys.argv[1])
+        if(response.__contains__('preamble ack')):
+            print(response)
+            client.send_packet()
+        else: 
+            print("Preamble failed, please try again")
+            print(response)
     except Exception as e:
         print(e)
